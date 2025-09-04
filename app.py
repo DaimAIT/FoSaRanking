@@ -54,7 +54,7 @@ def preprocess_image(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
     enhanced = clahe.apply(gray)
-    denoised = cv2.medianBlur(enhanced, 3)
+    denoised = cv2.medianBlur(enhanced,3)
     return denoised  # без бинаризации
 def extract_rows_from_image(img):
     img = crop_table_body(img, 0.24, 0.20)
@@ -66,8 +66,8 @@ def extract_rows_from_image(img):
     boxes = parse_boxes(ocr_res)
 
     # Центр ников = 20–85% ширины
-    left_bound = w * 0.15
-    right_bound = w * 0.75
+    left_bound = w * 0.14
+    right_bound = w * 0.76
 
     left   = [(x, y, t) for x, y, t in boxes if x < left_bound]
     center = [(x, y, t) for x, y, t in boxes if left_bound <= x <= right_bound]
