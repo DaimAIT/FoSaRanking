@@ -56,18 +56,18 @@ def preprocess_image(img):
     enhanced = clahe.apply(gray)
     denoised = cv2.medianBlur(enhanced, 3)
     return denoised  # без бинаризации
-
 def extract_rows_from_image(img):
-    img = crop_table_body(img, 0.22, 0.08)
+    img = crop_table_body(img, 0.24, 0.20)
     img = preprocess_image(img)
-    h, w = img.shape[:2]
 
+    h, w = img.shape[:2]
+    
     ocr_res = ocr.ocr(img, cls=True)[0]
     boxes = parse_boxes(ocr_res)
 
     # Центр ников = 20–85% ширины
-    left_bound = w * 0.20
-    right_bound = w * 0.85
+    left_bound = w * 0.15
+    right_bound = w * 0.75
 
     left   = [(x, y, t) for x, y, t in boxes if x < left_bound]
     center = [(x, y, t) for x, y, t in boxes if left_bound <= x <= right_bound]
@@ -163,3 +163,28 @@ if uploaded_files:
             file_name="players_final.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+
+if __name__ == "__main__":
+    import sys
+
+    # путь к файлу передаём аргументом: python streamlit_app.py test.jpg
+    if len(sys.argv) < 2:
+        print("Usage: python streamlit_app.py <image_path>")
+        sys.exit(1)
+
+    img_path = sys.argv[1]
+
+    with open(img_path, "rb") as f:
+        img_bytes = f.read()
+
+    rows = extract_rows(img_bytes)
+
+    print("Распознанные строки:")
+    for r in rows:
+        print(r)
+
+    # Если хочешь сразу посмотреть как DataFrame
+    df = pd.DataFrame(rows)
+    print("\nDataFrame:")
+    print(df)
