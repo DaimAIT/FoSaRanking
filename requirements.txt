@@ -3,3 +3,4 @@ opencv_contrib_python
 opencv-python-headless
 paddleocr
 pandas
+paddlepaddle
