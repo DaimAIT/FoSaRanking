@@ -65,9 +65,9 @@ def extract_rows_from_image(img):
     ocr_res = ocr.ocr(img, cls=True)[0]
     boxes = parse_boxes(ocr_res)
 
-    # Центр ников = 20–85% ширины
-    left_bound = w * 0.14
-    right_bound = w * 0.76
+    # Центр ников = 14–76% ширины
+    left_bound = w * 0.2
+    right_bound = w * 0.75
 
     left   = [(x, y, t) for x, y, t in boxes if x < left_bound]
     center = [(x, y, t) for x, y, t in boxes if left_bound <= x <= right_bound]
@@ -90,30 +90,34 @@ def extract_rows_from_image(img):
     # Игроки
     rows = []
     for i, (sy, sc) in enumerate(scores):
-        rank = next((r for ry, r in ranks if abs(ry-sy) < h*0.04), i+1)
-        closest_txt, min_dy = None, 999999
-        for cx, cy, ct in center:
-            dy = abs(cy-sy)
-            if dy < min_dy:
-                closest_txt, min_dy = ct, dy
-        if not closest_txt:
+        # берём все боксы из center рядом по Y
+        same_line = [c for c in center if abs(c[1] - sy) < h * 0.05]
+        if not same_line:
             continue
 
-        mid_line = clean_text(closest_txt)
-        nick, clan_tag, clan_name = mid_line, "FoSa", "Forgotten Saga"
-        m = re.search(r"\[([^\]]+)\]", mid_line)
-        if m:
-            clan_tag = m.group(1)
-            clan_name = mid_line[m.end():].strip()
-            nick = mid_line[:m.start()].strip()
-        else:
-            parts = mid_line.split()
-            if len(parts) > 1:
-                nick = " ".join(parts[:-1])
-                clan_tag = parts[-1]
+        # сортируем слева направо
+        same_line.sort(key=lambda c: c[0])
+
+        # Ник = первый бокс без [TAG]
+        nick_box = next((t for x, y, t in same_line if not t.strip().startswith("[")), None)
+        clan_box = next((t for x, y, t in same_line if t.strip().startswith("[")), None)
+
+        # Чистим текст
+        nick = clean_text(nick_box) if nick_box else "N/A"
+        clan_tag, clan_name = "FoSa", "Forgotten Saga"
+
+        if clan_box:
+            m = re.search(r"\[([^\]]+)\]\s*(.*)", clan_box)
+            if m:
+                clan_tag = m.group(1)
+                clan_name = m.group(2).strip() or KNOWN_TAGS.get(clan_tag, "N/A")
+
+        # Хак: если ник оканчивается на число (как Doomlord 13), не считать его клан-тегом
+        if re.search(r"\s\d+$", nick):
+            nick = nick
 
         rows.append({
-            "Rank": rank,
+            "Rank": next((r for ry, r in ranks if abs(ry - sy) < h * 0.04), i + 1),
             "Nickname": nick,
             "Clan tag": clan_tag,
             "Clan": clan_name,
@@ -121,6 +125,7 @@ def extract_rows_from_image(img):
         })
 
     return rows
+
 
 
 def extract_rows(img_bytes):
@@ -168,23 +173,54 @@ if uploaded_files:
 if __name__ == "__main__":
     import sys
 
-    # путь к файлу передаём аргументом: python streamlit_app.py test.jpg
     if len(sys.argv) < 2:
-        print("Usage: python streamlit_app.py <image_path>")
-        sys.exit(1)
+        img_path = "test.jpg"
+        print(f"[DEBUG] Использую тестовый файл {img_path}")
+    else:
+        img_path = sys.argv[1]
 
-    img_path = sys.argv[1]
+    img = cv2.imread(img_path)
+    rows = extract_rows_from_image(img)
 
-    with open(img_path, "rb") as f:
-        img_bytes = f.read()
-
-    rows = extract_rows(img_bytes)
-
-    print("Распознанные строки:")
+    print("\nРаспознанные строки:")
     for r in rows:
         print(r)
 
-    # Если хочешь сразу посмотреть как DataFrame
+    # Для удобства покажем DataFrame
     df = pd.DataFrame(rows)
     print("\nDataFrame:")
     print(df)
+
+    # Визуализация OCR
+    img_proc = crop_table_body(img, 0.24, 0.20)
+    img_proc = preprocess_image(img_proc)
+    h, w = img_proc.shape[:2]
+    ocr_res = ocr.ocr(img_proc, cls=True)[0]
+    boxes = parse_boxes(ocr_res)
+
+    left_bound = w * 0.20
+    right_bound = w * 0.75
+    left   = [(x, y, t) for x, y, t in boxes if x < left_bound]
+    center = [(x, y, t) for x, y, t in boxes if left_bound <= x <= right_bound]
+    right  = [(x, y, t) for x, y, t in boxes if x > right_bound]
+
+    vis = cv2.cvtColor(img_proc, cv2.COLOR_GRAY2BGR)
+
+    def draw_points(data, color):
+        for x, y, t in data:
+            cv2.circle(vis, (int(x), int(y)), 6, color, -1)
+            cv2.putText(vis, t, (int(x)+5, int(y)-5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+
+    draw_points(left,   (0, 0, 255))
+    draw_points(center, (0, 255, 0))
+    draw_points(right,  (255, 0, 0))
+
+    cv2.imshow("OCR positions (all)", vis)
+    cv2.imshow("Left",   img_proc[:, :int(left_bound)])
+    cv2.imshow("Center", img_proc[:, int(left_bound):int(right_bound)])
+    cv2.imshow("Right",  img_proc[:, int(right_bound):])
+
+    print("\nНажми любую клавишу в окне изображения для выхода...")
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
