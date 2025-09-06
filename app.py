@@ -58,7 +58,7 @@ def preprocess_image(img):
     return denoised  # без бинаризации
 def extract_rows_from_image(img):
     img = crop_table_body(img, 0.24, 0.20)
-    img = preprocess_image(img)
+    #img = preprocess_image(img)
 
     h, w = img.shape[:2]
     
