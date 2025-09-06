@@ -162,28 +162,36 @@ if uploaded_files:
 
         progress_bar.progress((i + 1)/len(uploaded_files))
 
-    if all_rows:
-        df = pd.DataFrame(all_rows)
-        df = df.apply(fix_row, axis=1)
-        df.sort_values("Points", inplace=True)
-        df = df.drop_duplicates(subset=["Nickname"], keep="first")
-        df.reset_index(drop=True, inplace=True)
-        st.success("✅ All images processed!")
+if "all_rows" not in st.session_state:
+    st.session_state.all_rows = []
 
-        st.dataframe(df)
+if uploaded_files and not st.session_state.all_rows:
+    all_rows = []
+    progress_bar = st.progress(0)
+    for i, file in enumerate(uploaded_files):
+        content = file.read()
+        rows = extract_rows(content)
+        all_rows.extend(rows)
+        del content, rows
+        import gc; gc.collect()
+        progress_bar.progress((i + 1)/len(uploaded_files))
+    st.session_state.all_rows = all_rows
 
-        # Скачать Excel
-        excel_output = create_excel(df)
-        st.download_button(
-            label="⬇️ Download Excel",
-            data=excel_output,
-            file_name="players_final.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+# Используем данные из сессии
+all_rows = st.session_state.all_rows
+if all_rows:
+    df = pd.DataFrame(all_rows)
+    df = df.apply(fix_row, axis=1)
+    df.sort_values("Rank", inplace=True, ascending=True)
+    df = df.drop_duplicates(subset=["Nickname"], keep="first")
+    df.reset_index(drop=True, inplace=True)
 
-        # Лёгкий CSV вариант
-        csv_data = df.to_csv(index=False).encode('utf-8')
-        st.download_button("⬇️ Download CSV", data=csv_data, file_name="players_final.csv", mime="text/csv")
+    st.dataframe(df)
 
-        del df
-        gc.collect()
+    excel_output = create_excel(df)
+    st.download_button(
+        label="⬇️ Download Excel",
+        data=excel_output,
+        file_name="players_final.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
