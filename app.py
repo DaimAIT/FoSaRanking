@@ -56,8 +56,8 @@ def extract_rows_from_image(img):
     ocr_res = ocr.ocr(img, cls=False)[0]  # cls=False тоже экономит память
     boxes = parse_boxes(ocr_res)
 
-    left_bound = w * 0.14
-    right_bound = w * 0.76
+    left_bound = w * 0.20
+    right_bound = w * 0.75
 
     # Разбивка
     left   = [(x, y, t) for x, y, t in boxes if x < left_bound]
