@@ -42,10 +42,17 @@ def preprocess_image(img):
     return th
 
 def parse_boxes(ocr_res):
-    """Парсим боксы OCR"""
-    return [(np.mean([p[0][0] for p in line[0]]), 
-             np.mean([p[0][1] for p in line[0]]), 
-             line[1][0]) for line in ocr_res]
+    out = []
+    for line in ocr_res:
+        # line[0] — это bbox, line[1] — текст и confidence
+        bbox, (txt, conf) = line
+        # проверяем, что bbox — список точек
+        if isinstance(bbox, (list, tuple)) and all(isinstance(p, (list, tuple, np.ndarray)) for p in bbox):
+            x = np.mean([p[0] for p in bbox])
+            y = np.mean([p[1] for p in bbox])
+            out.append((x, y, txt.strip()))
+        # иначе пропускаем
+    return out
 
 def extract_rows_from_image(img):
     # минимизируем хранение промежуточных массивов
