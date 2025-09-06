@@ -178,7 +178,7 @@ if uploaded_files:
     if all_rows:
         df = pd.DataFrame(all_rows)
         df = df.apply(fix_row, axis=1)
-        df.sort_values("Points", inplace=True)
+        df.sort_values("Points", inplace=True, ascending=False)
         df = df.drop_duplicates(subset=["Nickname"], keep="first")
         df.reset_index(drop=True, inplace=True)
         st.success("✅ All images processed!")
