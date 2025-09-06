@@ -183,7 +183,7 @@ if uploaded_files:
 
         # Лёгкий CSV вариант
   #      csv_data = df.to_csv(index=False).encode('utf-8')
-        st.download_button("⬇️ Download CSV", data=csv_data, file_name="players_final.csv", mime="text/csv")
+        #st.download_button("⬇️ Download CSV", data=csv_data, file_name="players_final.csv", mime="text/csv")
 
         del df
         gc.collect()
