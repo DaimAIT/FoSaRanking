@@ -5,3 +5,4 @@ paddleocr
 pandas
 paddlepaddle
 openpyxl
+xlsxwriter
