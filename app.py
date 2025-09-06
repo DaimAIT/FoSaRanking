@@ -66,8 +66,8 @@ def extract_rows_from_image(img):
     boxes = parse_boxes(ocr_res)
 
     # Центр ников = 14–76% ширины
-    left_bound = w * 0.14
-    right_bound = w * 0.76
+    left_bound = w * 0.20
+    right_bound = w * 0.75
 
     left   = [(x, y, t) for x, y, t in boxes if x < left_bound]
     center = [(x, y, t) for x, y, t in boxes if left_bound <= x <= right_bound]
@@ -100,7 +100,7 @@ def extract_rows_from_image(img):
 
         # Чистим текст
         nick = clean_text(nick_box) if nick_box else "N/A"
-        clan_tag, clan_name = "N/A", "N/A"
+        clan_tag, clan_name = "FoSa", "Forgotten Saga"
 
         if clan_box:
             m = re.search(r"\[([^\]]+)\]\s*(.*)", clan_box)
