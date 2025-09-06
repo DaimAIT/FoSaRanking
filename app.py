@@ -66,16 +66,12 @@ def extract_rows_from_image(img):
     boxes = parse_boxes(ocr_res)
 
     # Центр ников = 14–76% ширины
-    left_bound = w * 0.2
-    right_bound = w * 0.75
+    left_bound = w * 0.14
+    right_bound = w * 0.76
 
     left   = [(x, y, t) for x, y, t in boxes if x < left_bound]
     center = [(x, y, t) for x, y, t in boxes if left_bound <= x <= right_bound]
     right  = [(x, y, t) for x, y, t in boxes if x > right_bound]
-
-    # Ранги
-    ranks = [(y, int(re.sub(r"\D", "", t))) for x,y,t in left if re.sub(r"\D","",t).isdigit()]
-    ranks.sort(key=lambda x: x[0])
 
     # Очки
     scores = []
@@ -104,7 +100,7 @@ def extract_rows_from_image(img):
 
         # Чистим текст
         nick = clean_text(nick_box) if nick_box else "N/A"
-        clan_tag, clan_name = "FoSa", "Forgotten Saga"
+        clan_tag, clan_name = "N/A", "N/A"
 
         if clan_box:
             m = re.search(r"\[([^\]]+)\]\s*(.*)", clan_box)
@@ -112,19 +108,24 @@ def extract_rows_from_image(img):
                 clan_tag = m.group(1)
                 clan_name = m.group(2).strip() or KNOWN_TAGS.get(clan_tag, "N/A")
 
-        # Хак: если ник оканчивается на число (как Doomlord 13), не считать его клан-тегом
+        # Хак: если ник оканчивается на число (как Doomlord 13), оставляем как есть
         if re.search(r"\s\d+$", nick):
             nick = nick
 
         rows.append({
-            "Rank": next((r for ry, r in ranks if abs(ry - sy) < h * 0.04), i + 1),
             "Nickname": nick,
             "Clan tag": clan_tag,
             "Clan": clan_name,
             "Points": sc
         })
 
+    # сортировка по очкам и назначение Rank
+    rows.sort(key=lambda r: r["Points"], reverse=True)
+    for i, row in enumerate(rows, start=1):
+        row["Rank"] = i
+
     return rows
+
 
 
 
