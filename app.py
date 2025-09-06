@@ -144,7 +144,7 @@ st.set_page_config(page_title="OCR Table Parser", layout="wide")
 st.title("📄 FoSa VS Points OCR Parser (Optimized)")
 
 uploaded_files = st.file_uploader(
-    "Upload images (max 5)", accept_multiple_files=True, type=['jpg','png','jpeg'], 
+    "Upload images",  type=['jpg','png','jpeg'], 
     accept_multiple_files=True
 )
 
