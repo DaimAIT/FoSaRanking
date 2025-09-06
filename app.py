@@ -139,18 +139,6 @@ def create_excel(df):
     output.seek(0)
     return output
 
-
-@st.cache_data
-def process_uploaded_files(uploaded_files):
-    all_rows = []
-    for file in uploaded_files:
-        content = file.read()
-        rows = extract_rows(content)
-        all_rows.extend(rows)
-        del content, rows
-        import gc; gc.collect()
-    return all_rows
-
 # ---------------- Streamlit Interface ----------------
 st.set_page_config(page_title="OCR Table Parser", layout="wide")
 st.title("📄 FoSa VS Points OCR Parser (Optimized)")
@@ -161,7 +149,6 @@ uploaded_files = st.file_uploader(
 )
 
 if uploaded_files:
-    all_rows = process_uploaded_files(uploaded_files)
     all_rows = []
     progress_bar = st.progress(0)
     
@@ -196,7 +183,7 @@ if uploaded_files:
 
         # Лёгкий CSV вариант
   #      csv_data = df.to_csv(index=False).encode('utf-8')
-   #     st.download_button("⬇️ Download CSV", data=csv_data, file_name="players_final.csv", mime="text/csv")
+        st.download_button("⬇️ Download CSV", data=csv_data, file_name="players_final.csv", mime="text/csv")
 
         del df
         gc.collect()
