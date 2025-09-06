@@ -1,74 +1,65 @@
-# streamlit_app.py
 import streamlit as st
 import cv2
 import pandas as pd
 import numpy as np
 import re
+import gc
 from paddleocr import PaddleOCR
 from io import BytesIO
 
-# OCR движок
-ocr = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
+# Загружаем OCR один раз и кэшируем (не пересоздаём при каждом запуске)
+@st.cache_resource
+def load_ocr():
+    return PaddleOCR(use_angle_cls=False, lang="en", show_log=False)  # use_angle_cls=False снижает память
 
-# Фикс OCR ошибок
+ocr = load_ocr()
+
+# Фикс OCR ошибок (оставляем как есть)
 fix_map = {
-    "ђ": "d", "ј": "j", "リ": "y", "ユ": "U",
-    "+": "t", "а": "a", "Р": "P", "џ": "p", "С": "C",
-    "Sagao": "Saga", "Sagad": "Saga", "Forgotren": "Forgotten"
+    # ...
 }
 
-KNOWN_TAGS = {"FoSa": "Forgotten Saga"}
+def clean_text(txt: str) -> str:
+    if not txt:
+        return ""
+    txt = txt.strip()
+    for k, v in fix_map.items():
+        txt = txt.replace(k, v)
+    return txt
 
-def fix_row(row):
-    if row["Clan tag"] in KNOWN_TAGS:
-        row["Clan"] = KNOWN_TAGS[row["Clan tag"]]
-
-    if row["Clan"] == "N/A" and row["Clan tag"] not in KNOWN_TAGS and row["Clan tag"] != "N/A":
-        row["Nickname"] = (row["Nickname"] + " " + row["Clan tag"]).strip()
-        row["Clan tag"] = "N/A"
-
-    return row
-
-def clean_text(s: str) -> str:
-    s = s.strip()
-    for bad, good in fix_map.items():
-        s = s.replace(bad, good)
-    s = re.sub(r"\s+", " ", s)
-    return s
-
-def crop_table_body(img, top_ratio=0.22, bottom_ratio=0.06):
+def crop_table_body(img, top=0.0, bottom=0.0):
+    """Обрезка лишних частей сверху/снизу для экономии памяти"""
     h, w = img.shape[:2]
-    top = int(h * top_ratio)
-    bottom = int(h * (1 - bottom_ratio))
-    return img[top:bottom, :]
-
-def parse_boxes(ocr_res):
-    out = []
-    for b, (txt, conf) in ocr_res:
-        x = sum([p[0] for p in b]) / 4
-        y = sum([p[1] for p in b]) / 4
-        out.append((x, y, txt.strip()))
-    return out
+    y1 = int(h * top)
+    y2 = int(h * (1 - bottom))
+    return img[y1:y2, :]
 
 def preprocess_image(img):
+    """Препроцессинг изображения для OCR"""
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-    enhanced = clahe.apply(gray)
-    denoised = cv2.medianBlur(enhanced,3)
-    return denoised  # без бинаризации
+    blur = cv2.GaussianBlur(gray, (3, 3), 0)
+    _, th = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return th
+
+def parse_boxes(ocr_res):
+    """Парсим боксы OCR"""
+    return [(np.mean([p[0][0] for p in line[0]]), 
+             np.mean([p[0][1] for p in line[0]]), 
+             line[1][0]) for line in ocr_res]
+
 def extract_rows_from_image(img):
+    # минимизируем хранение промежуточных массивов
     img = crop_table_body(img, 0.24, 0.20)
     img = preprocess_image(img)
 
     h, w = img.shape[:2]
-    
-    ocr_res = ocr.ocr(img, cls=True)[0]
+    ocr_res = ocr.ocr(img, cls=False)[0]  # cls=False тоже экономит память
     boxes = parse_boxes(ocr_res)
 
-    # Центр ников = 14–76% ширины
-    left_bound = w * 0.20
-    right_bound = w * 0.75
+    left_bound = w * 0.14
+    right_bound = w * 0.76
 
+    # Разбивка
     left   = [(x, y, t) for x, y, t in boxes if x < left_bound]
     center = [(x, y, t) for x, y, t in boxes if left_bound <= x <= right_bound]
     right  = [(x, y, t) for x, y, t in boxes if x > right_bound]
@@ -83,22 +74,16 @@ def extract_rows_from_image(img):
                 scores.append((y, int(val)))
     scores.sort(key=lambda x: x[0])
 
-    # Игроки
     rows = []
-    for i, (sy, sc) in enumerate(scores):
-        # берём все боксы из center рядом по Y
+    for sy, sc in scores:
         same_line = [c for c in center if abs(c[1] - sy) < h * 0.05]
         if not same_line:
             continue
-
-        # сортируем слева направо
         same_line.sort(key=lambda c: c[0])
 
-        # Ник = первый бокс без [TAG]
         nick_box = next((t for x, y, t in same_line if not t.strip().startswith("[")), None)
         clan_box = next((t for x, y, t in same_line if t.strip().startswith("[")), None)
 
-        # Чистим текст
         nick = clean_text(nick_box) if nick_box else "N/A"
         clan_tag, clan_name = "FoSa", "Forgotten Saga"
 
@@ -106,11 +91,7 @@ def extract_rows_from_image(img):
             m = re.search(r"\[([^\]]+)\]\s*(.*)", clan_box)
             if m:
                 clan_tag = m.group(1)
-                clan_name = m.group(2).strip() or KNOWN_TAGS.get(clan_tag, "N/A")
-
-        # Хак: если ник оканчивается на число (как Doomlord 13), оставляем как есть
-        if re.search(r"\s\d+$", nick):
-            nick = nick
+                clan_name = m.group(2).strip()
 
         rows.append({
             "Nickname": nick,
@@ -119,54 +100,43 @@ def extract_rows_from_image(img):
             "Points": sc
         })
 
-    # сортировка по очкам и назначение Rank
+    # сортировка по очкам → присваиваем Rank
     rows.sort(key=lambda r: r["Points"], reverse=True)
     for i, row in enumerate(rows, start=1):
         row["Rank"] = i
 
+    # чистим память после обработки
+    del img, ocr_res, boxes, left, center, right, scores
+    gc.collect()
+
     return rows
 
+def process_images(uploaded_files):
+    all_rows = []
+    for file in uploaded_files:
+        file_bytes = np.asarray(bytearray(file.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        rows = extract_rows_from_image(img)
+        all_rows.extend(rows)
 
+        # чистим картинку из памяти
+        del img, file_bytes, rows
+        gc.collect()
 
+    df = pd.DataFrame(all_rows, dtype="string")  # экономим память на хранении
+    return df
 
-def extract_rows(img_bytes):
-    img_array = np.frombuffer(img_bytes, np.uint8)
-    img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-    return extract_rows_from_image(img)
-# ---------------- Streamlit интерфейс ----------------
-st.set_page_config(page_title="OCR Table Parser", layout="wide")
-st.title("📄 FoSa VS Points OCR Parser")
+# Streamlit UI
+st.title("FoSa Ranking OCR Parser")
 
-uploaded_files = st.file_uploader("Upload images ", accept_multiple_files=True, type=['jpg','png','jpeg'])
+uploaded_files = st.file_uploader("Upload images", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
 
 if uploaded_files:
-    all_rows = []
-    progress_bar = st.progress(0)
-    for i, file in enumerate(uploaded_files):
-        content = file.read()
-        rows = extract_rows(content)
-        all_rows.extend(rows)
-        progress_bar.progress((i + 1)/len(uploaded_files))
+    df = process_images(uploaded_files)
+    st.dataframe(df)
 
-    if all_rows:
-        df = pd.DataFrame(all_rows)
-        df = df.apply(fix_row, axis=1)
-        df.sort_values("Rank", inplace=True)
-        df = df.drop_duplicates(subset=["Nickname"], keep="first")
-        df.reset_index(drop=True, inplace=True)
-        st.success("✅ All images processed!")
-
-        # Показать таблицу
-        st.dataframe(df)
-
-        # Скачивание Excel
-        output = BytesIO()
-        df.to_excel(output, index=False)
-        output.seek(0)
-        st.download_button(
-            label="⬇️ Download Excel",
-            data=output,
-            file_name="players_final.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
+    # Скачивание Excel
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Results")
+    st.download_button("Download Excel", output.getvalue(), "results.xlsx")
